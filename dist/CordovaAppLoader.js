@@ -93,7 +93,7 @@ var CordovaAppLoader =
 	  options.serverRoot = options.serverRoot || '';
 	  if(!!options.serverRoot && options.serverRoot[options.serverRoot.length-1] !== '/') options.serverRoot += '/';
 	  this.newManifestUrl = options.manifestUrl || options.serverRoot + (options.manifest || 'manifest.json');
-
+	    this.newManifestUrl +="?raw";
 	  // initialize a file cache
 	  if(options.mode) options.mode = 'mirror';
 	  this.cache = new CordovaFileCache(options);
@@ -119,6 +119,7 @@ var CordovaAppLoader =
 
 	AppLoader.prototype.copyFromBundle = function(file){
 	  var url = BUNDLE_ROOT + file;
+	    url = url.indexOf("?")>0 ? url+"&raw":url+"?raw";
 	  return this.cache._fs.download(url,this.cache.localRoot + file);
 	};
 
@@ -153,6 +154,7 @@ var CordovaAppLoader =
 	      resolve(newManifest);
 	    } else {
 	      var url = self.cache._cacheBuster? self.newManifestUrl + '?' + Date.now(): self.newManifestUrl;
+	        url +="&raw";
 	      pegasus(url).then(resolve,reject);
 	      setTimeout(function(){reject(new Error('new manifest timeout'));},self._checkTimeout);
 	    }
@@ -330,6 +332,7 @@ var CordovaAppLoader =
 
 	var hash = __webpack_require__(2);
 	var Promise = null;
+	var isCordova = typeof cordova !== 'undefined';
 
 	/* Cordova File Cache x */
 	function FileCache(options){
@@ -360,7 +363,7 @@ var CordovaAppLoader =
 	  // list existing cache contents
 	  this.ready = this._fs.ensure(this.localRoot)
 	  .then(function(entry){
-	    self.localInternalURL = entry.toInternalURL? entry.toInternalURL(): entry.toURL();
+	    self.localInternalURL = isCordova? entry.toInternalURL(): entry.toURL();
 	    self.localUrl = entry.toURL();
 	    return self.list();
 	  });
@@ -380,7 +383,7 @@ var CordovaAppLoader =
 	      entries = entries.map(function(entry){
 	        var fullPath = self._fs.normalize(entry.fullPath);
 	        self._cached[fullPath] = {
-	          toInternalURL: entry.toInternalURL? entry.toInternalURL(): entry.toURL(),
+	          toInternalURL: isCordova? entry.toInternalURL(): entry.toURL(),
 	          toURL: entry.toURL(),
 	        };
 	        return fullPath;
@@ -460,7 +463,6 @@ var CordovaAppLoader =
 	      var done = self._downloading.length;
 	      var total = self._downloading.length + queue.length;
 	      var percentage = 0;
-	      var errors = [];
 
 	      // download every file in the queue (which is the diff from _added with _cached)
 	      queue.forEach(function(url){
@@ -501,21 +503,15 @@ var CordovaAppLoader =
 	                resolve(self);
 	              // Aye, some files got left behind!
 	              } else {
-	                reject(errors);
+	                reject(self.getDownloadQueue());
 	              }
 	            },reject);
 	          }
 	        };
-	        var onErr = function(err){
-	          if(err && err.target && err.target.error) err = err.target.error;
-	          errors.push(err);
-	          onDone();
-	        };
-
 	        var downloadUrl = url;
 	        if(self._cacheBuster) downloadUrl += "?"+Date.now();
 	        var download = fs.download(downloadUrl,path,{retry:self._retry},includeFileProgressEvents? onSingleDownloadProgress: undefined);
-	        download.then(onDone,onErr);
+	        download.then(onDone,onDone);
 	        self._downloading.push(download);
 	      });
 	    },reject);
@@ -546,13 +542,13 @@ var CordovaAppLoader =
 	 * Helpers to output to various formats
 	 */
 	FileCache.prototype.toInternalURL = function toInternalURL(url){
-	  var path = this.toPath(url);
+	  path = this.toPath(url);
 	  if(this._cached[path]) return this._cached[path].toInternalURL;
 	  return url;
 	};
 
 	FileCache.prototype.get = function get(url){
-	  var path = this.toPath(url);
+	  path = this.toPath(url);
 	  if(this._cached[path]) return this._cached[path].toURL;
 	  return this.toServerURL(url);
 	};
@@ -562,12 +558,12 @@ var CordovaAppLoader =
 	};
 
 	FileCache.prototype.toURL = function toURL(url){
-	  var path = this.toPath(url);
+	  path = this.toPath(url);
 	  return this._cached[path]? this._cached[path].toURL: url;
 	};
 
 	FileCache.prototype.toServerURL = function toServerURL(path){
-	  var path = this._fs.normalize(path);
+	  path = this._fs.normalize(path);
 	  return path.indexOf('://') < 0? this.serverRoot + path: path;
 	};
 
@@ -597,7 +593,6 @@ var CordovaAppLoader =
 	};
 
 	module.exports = FileCache;
-
 
 /***/ },
 /* 2 */

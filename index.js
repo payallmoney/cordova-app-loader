@@ -72,6 +72,7 @@ AppLoader.prototype._createFilemap = function(files){
 
 AppLoader.prototype.copyFromBundle = function(file){
   var url = BUNDLE_ROOT + file;
+    url = url.indexOf("?")>0 ? url+"&raw":url+"?raw";
   return this.cache._fs.download(url,this.cache.localRoot + file);
 };
 

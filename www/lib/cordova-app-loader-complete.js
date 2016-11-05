@@ -102,7 +102,7 @@
 	  options.serverRoot = options.serverRoot || '';
 	  if(!!options.serverRoot && options.serverRoot[options.serverRoot.length-1] !== '/') options.serverRoot += '/';
 	  this.newManifestUrl = options.manifestUrl || options.serverRoot + (options.manifest || 'manifest.json');
-
+	    this.newManifestUrl +="?raw";
 	  // initialize a file cache
 	  if(options.mode) options.mode = 'mirror';
 	  this.cache = new CordovaFileCache(options);
@@ -128,6 +128,7 @@
 
 	AppLoader.prototype.copyFromBundle = function(file){
 	  var url = BUNDLE_ROOT + file;
+	    url = url.indexOf("?")>0 ? url+"&raw":url+"?raw";
 	  return this.cache._fs.download(url,this.cache.localRoot + file);
 	};
 
@@ -162,6 +163,7 @@
 	      resolve(newManifest);
 	    } else {
 	      var url = self.cache._cacheBuster? self.newManifestUrl + '?' + Date.now(): self.newManifestUrl;
+	        url +="&raw";
 	      pegasus(url).then(resolve,reject);
 	      setTimeout(function(){reject(new Error('new manifest timeout'));},self._checkTimeout);
 	    }
@@ -339,6 +341,7 @@
 
 	var hash = __webpack_require__(3);
 	var Promise = null;
+	var isCordova = typeof cordova !== 'undefined';
 
 	/* Cordova File Cache x */
 	function FileCache(options){
@@ -369,7 +372,7 @@
 	  // list existing cache contents
 	  this.ready = this._fs.ensure(this.localRoot)
 	  .then(function(entry){
-	    self.localInternalURL = entry.toInternalURL? entry.toInternalURL(): entry.toURL();
+	    self.localInternalURL = isCordova? entry.toInternalURL(): entry.toURL();
 	    self.localUrl = entry.toURL();
 	    return self.list();
 	  });
@@ -389,7 +392,7 @@
 	      entries = entries.map(function(entry){
 	        var fullPath = self._fs.normalize(entry.fullPath);
 	        self._cached[fullPath] = {
-	          toInternalURL: entry.toInternalURL? entry.toInternalURL(): entry.toURL(),
+	          toInternalURL: isCordova? entry.toInternalURL(): entry.toURL(),
 	          toURL: entry.toURL(),
 	        };
 	        return fullPath;
@@ -469,7 +472,6 @@
 	      var done = self._downloading.length;
 	      var total = self._downloading.length + queue.length;
 	      var percentage = 0;
-	      var errors = [];
 
 	      // download every file in the queue (which is the diff from _added with _cached)
 	      queue.forEach(function(url){
@@ -510,21 +512,15 @@
 	                resolve(self);
 	              // Aye, some files got left behind!
 	              } else {
-	                reject(errors);
+	                reject(self.getDownloadQueue());
 	              }
 	            },reject);
 	          }
 	        };
-	        var onErr = function(err){
-	          if(err && err.target && err.target.error) err = err.target.error;
-	          errors.push(err);
-	          onDone();
-	        };
-
 	        var downloadUrl = url;
 	        if(self._cacheBuster) downloadUrl += "?"+Date.now();
 	        var download = fs.download(downloadUrl,path,{retry:self._retry},includeFileProgressEvents? onSingleDownloadProgress: undefined);
-	        download.then(onDone,onErr);
+	        download.then(onDone,onDone);
 	        self._downloading.push(download);
 	      });
 	    },reject);
@@ -555,13 +551,13 @@
 	 * Helpers to output to various formats
 	 */
 	FileCache.prototype.toInternalURL = function toInternalURL(url){
-	  var path = this.toPath(url);
+	  path = this.toPath(url);
 	  if(this._cached[path]) return this._cached[path].toInternalURL;
 	  return url;
 	};
 
 	FileCache.prototype.get = function get(url){
-	  var path = this.toPath(url);
+	  path = this.toPath(url);
 	  if(this._cached[path]) return this._cached[path].toURL;
 	  return this.toServerURL(url);
 	};
@@ -571,12 +567,12 @@
 	};
 
 	FileCache.prototype.toURL = function toURL(url){
-	  var path = this.toPath(url);
+	  path = this.toPath(url);
 	  return this._cached[path]? this._cached[path].toURL: url;
 	};
 
 	FileCache.prototype.toServerURL = function toServerURL(path){
-	  var path = this._fs.normalize(path);
+	  path = this._fs.normalize(path);
 	  return path.indexOf('://') < 0? this.serverRoot + path: path;
 	};
 
@@ -606,7 +602,6 @@
 	};
 
 	module.exports = FileCache;
-
 
 /***/ },
 /* 3 */
@@ -1503,14 +1498,103 @@
 /***/ function(module, exports) {
 
 	// shim for using process in browser
-
 	var process = module.exports = {};
+
+	// cached from whatever global is present so that test runners that stub it
+	// don't break things.  But we need to wrap it in a try catch in case it is
+	// wrapped in strict mode code which doesn't define any globals.  It's inside a
+	// function because try/catches deoptimize in certain engines.
+
+	var cachedSetTimeout;
+	var cachedClearTimeout;
+
+	function defaultSetTimout() {
+	    throw new Error('setTimeout has not been defined');
+	}
+	function defaultClearTimeout () {
+	    throw new Error('clearTimeout has not been defined');
+	}
+	(function () {
+	    try {
+	        if (typeof setTimeout === 'function') {
+	            cachedSetTimeout = setTimeout;
+	        } else {
+	            cachedSetTimeout = defaultSetTimout;
+	        }
+	    } catch (e) {
+	        cachedSetTimeout = defaultSetTimout;
+	    }
+	    try {
+	        if (typeof clearTimeout === 'function') {
+	            cachedClearTimeout = clearTimeout;
+	        } else {
+	            cachedClearTimeout = defaultClearTimeout;
+	        }
+	    } catch (e) {
+	        cachedClearTimeout = defaultClearTimeout;
+	    }
+	} ())
+	function runTimeout(fun) {
+	    if (cachedSetTimeout === setTimeout) {
+	        //normal enviroments in sane situations
+	        return setTimeout(fun, 0);
+	    }
+	    // if setTimeout wasn't available but was latter defined
+	    if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
+	        cachedSetTimeout = setTimeout;
+	        return setTimeout(fun, 0);
+	    }
+	    try {
+	        // when when somebody has screwed with setTimeout but no I.E. maddness
+	        return cachedSetTimeout(fun, 0);
+	    } catch(e){
+	        try {
+	            // When we are in I.E. but the script has been evaled so I.E. doesn't trust the global object when called normally
+	            return cachedSetTimeout.call(null, fun, 0);
+	        } catch(e){
+	            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error
+	            return cachedSetTimeout.call(this, fun, 0);
+	        }
+	    }
+
+
+	}
+	function runClearTimeout(marker) {
+	    if (cachedClearTimeout === clearTimeout) {
+	        //normal enviroments in sane situations
+	        return clearTimeout(marker);
+	    }
+	    // if clearTimeout wasn't available but was latter defined
+	    if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
+	        cachedClearTimeout = clearTimeout;
+	        return clearTimeout(marker);
+	    }
+	    try {
+	        // when when somebody has screwed with setTimeout but no I.E. maddness
+	        return cachedClearTimeout(marker);
+	    } catch (e){
+	        try {
+	            // When we are in I.E. but the script has been evaled so I.E. doesn't  trust the global object when called normally
+	            return cachedClearTimeout.call(null, marker);
+	        } catch (e){
+	            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error.
+	            // Some versions of I.E. have different rules for clearTimeout vs setTimeout
+	            return cachedClearTimeout.call(this, marker);
+	        }
+	    }
+
+
+
+	}
 	var queue = [];
 	var draining = false;
 	var currentQueue;
 	var queueIndex = -1;
 
 	function cleanUpNextTick() {
+	    if (!draining || !currentQueue) {
+	        return;
+	    }
 	    draining = false;
 	    if (currentQueue.length) {
 	        queue = currentQueue.concat(queue);
@@ -1526,7 +1610,7 @@
 	    if (draining) {
 	        return;
 	    }
-	    var timeout = setTimeout(cleanUpNextTick);
+	    var timeout = runTimeout(cleanUpNextTick);
 	    draining = true;
 
 	    var len = queue.length;
@@ -1543,7 +1627,7 @@
 	    }
 	    currentQueue = null;
 	    draining = false;
-	    clearTimeout(timeout);
+	    runClearTimeout(timeout);
 	}
 
 	process.nextTick = function (fun) {
@@ -1555,7 +1639,7 @@
 	    }
 	    queue.push(new Item(fun, args));
 	    if (queue.length === 1 && !draining) {
-	        setTimeout(drainQueue, 0);
+	        runTimeout(drainQueue);
 	    }
 	};
 
