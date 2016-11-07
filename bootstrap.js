@@ -86,13 +86,13 @@ function loadManifest(manifest,fromLocalStorage,timeout){
         el= document.createElement('script');
         el.charset="UTF-8";
         el.type= 'text/javascript';
-        el.src= src + '?' + now;
+        el.src= src + '?raw&' + now;
         el.async = false;
       // Load CSS
       } else {
         el= document.createElement('link');
         el.rel = "stylesheet";
-        el.href = src + '?' + now;
+        el.href = src + '?raw&' + now;
         el.type = "text/css";
       }
       head.appendChild(el);
