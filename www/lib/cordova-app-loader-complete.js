@@ -162,7 +162,8 @@
 	    if(typeof newManifest === "object") {
 	      resolve(newManifest);
 	    } else {
-	      var url = self.cache._cacheBuster? self.newManifestUrl + '?' + Date.now(): self.newManifestUrl;
+	      var url = self.cache._cacheBuster? self.newManifestUrl + '?' + Date.now() : self.newManifestUrl;
+	        url = url.indexOf("?")>0 ? url+"&raw":url+"?raw";
 	      pegasus(url).then(resolve,reject);
 	      setTimeout(function(){reject(new Error('new manifest timeout'));},self._checkTimeout);
 	    }
