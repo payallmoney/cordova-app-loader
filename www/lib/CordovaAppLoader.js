@@ -93,7 +93,7 @@ var CordovaAppLoader =
 	  options.serverRoot = options.serverRoot || '';
 	  if(!!options.serverRoot && options.serverRoot[options.serverRoot.length-1] !== '/') options.serverRoot += '/';
 	  this.newManifestUrl = options.manifestUrl || options.serverRoot + (options.manifest || 'manifest.json');
-	    this.newManifestUrl +="?raw";
+
 	  // initialize a file cache
 	  if(options.mode) options.mode = 'mirror';
 	  this.cache = new CordovaFileCache(options);
@@ -154,7 +154,6 @@ var CordovaAppLoader =
 	      resolve(newManifest);
 	    } else {
 	      var url = self.cache._cacheBuster? self.newManifestUrl + '?' + Date.now(): self.newManifestUrl;
-	        url +="&raw";
 	      pegasus(url).then(resolve,reject);
 	      setTimeout(function(){reject(new Error('new manifest timeout'));},self._checkTimeout);
 	    }
